@@ -1,0 +1,64 @@
+version: '3.6'
+services:
+  nginx:
+    image: rookiezoe/nginx
+    container_name: ${APP_NAME}-nginx
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./conf/nginx/nginx.conf:/etc/nginx/nginx.conf:cached
+      - ./conf/nginx/templates:/etc/nginx/templates:cached
+      - ./www:/var/www/html:rw,cached
+      - ./cache:/var/www/cache:rw,cached
+      - ./certs:/etc/letsencrypt
+    environment:
+      - "NGINX_ENVSUBST_TEMPLATE_SUFFIX=.conf"
+      - "DOMAIN=${DOMAIN}"
+    depends_on:
+      - php
+    restart: always
+
+  mysql:
+    image: mariadb
+    container_name: ${APP_NAME}-mysql
+    command: --lower_case_table_names=2
+    volumes:
+       - './data/db:/var/lib/mysql:delegated'
+    environment:
+      - MYSQL_ROOT_PASSWORD=${DB_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${DB_NAME}
+    restart: always
+    ports:
+      - '3306:3306'
+
+  php:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ${APP_NAME}-php
+    volumes:
+      - ./conf/php/php.ini:/usr/local/etc/php/conf.d/php.ini:cached
+      - ./www:/var/www/html:rw,cached
+      - ./cache:/var/www/cache:rw,cached
+    depends_on:
+      - mysql
+    restart: always
+
+  certbot:
+    depends_on:
+      - nginx
+    image: certbot/certbot
+    container_name: certbot
+    volumes:
+      - ./certs:/etc/letsencrypt
+      - ./www:/var/www/html:rw,cached
+    command: certonly --webroot --webroot-path=/var/www/html/web --email @EMAIL --agree-tos --no-eff-email --force-renewal -d @DOMAIN
+
+  composer:
+    image: composer
+    container_name: ${APP_NAME}-composer
+    working_dir: /var/www/html
+    restart: 'no'
+    volumes:
+      - ./www:/var/www/html:rw,cached
